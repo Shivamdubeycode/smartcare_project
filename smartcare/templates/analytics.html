@@ -1,0 +1,413 @@
+{% extends 'base.html' %}
+
+{% block title %}Analytics - Smart Care{% endblock %}
+
+{% block content %}
+<div class="analytics-page">
+    <div class="page-header">
+        <h1><i class="fas fa-chart-line"></i> Analytics Dashboard</h1>
+        <div class="time-filters">
+            <button class="filter-btn active" onclick="loadChartData(6)">6 Hours</button>
+            <button class="filter-btn" onclick="loadChartData(12)">12 Hours</button>
+            <button class="filter-btn" onclick="loadChartData(24)">24 Hours</button>
+            <button class="filter-btn" onclick="loadChartData(48)">48 Hours</button>
+        </div>
+    </div>
+
+    <!-- Active Crop Info -->
+    {% if active_crop %}
+    <div class="active-crop-banner">
+        <i class="fas fa-leaf"></i>
+        <span>Monitoring: <strong>{{ active_crop.crop.name }}</strong></span>
+        <span class="threshold-badge">
+            Moisture: {{ active_crop.crop.moisture_min }}% - {{ active_crop.crop.moisture_max }}%
+        </span>
+    </div>
+    {% endif %}
+
+    <!-- Charts Grid -->
+    <div class="charts-grid">
+        <!-- Moisture Chart -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3><i class="fas fa-tint"></i> Soil Moisture Level</h3>
+                <span class="chart-value" id="currentMoisture">--</span>
+            </div>
+            <div class="chart-container">
+                <canvas id="moistureChart"></canvas>
+            </div>
+            {% if active_crop %}
+            <div class="threshold-lines">
+                <div class="threshold-line min">
+                    <span>Min: {{ active_crop.crop.moisture_min }}%</span>
+                </div>
+                <div class="threshold-line max">
+                    <span>Max: {{ active_crop.crop.moisture_max }}%</span>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Temperature Chart -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3><i class="fas fa-thermometer-half"></i> Temperature</h3>
+                <span class="chart-value" id="currentTemp">--</span>
+            </div>
+            <div class="chart-container">
+                <canvas id="temperatureChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Humidity Chart -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3><i class="fas fa-water"></i> Air Humidity</h3>
+                <span class="chart-value" id="currentHumidity">--</span>
+            </div>
+            <div class="chart-container">
+                <canvas id="humidityChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Combined Chart -->
+        <div class="chart-card full-width">
+            <div class="chart-header">
+                <h3><i class="fas fa-chart-area"></i> Combined Analysis</h3>
+            </div>
+            <div class="chart-container">
+                <canvas id="combinedChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Summary -->
+    <div class="statistics-grid">
+        <div class="stat-box">
+            <h4>Average Moisture</h4>
+            <p class="stat-number" id="avgMoisture">--</p>
+        </div>
+        <div class="stat-box">
+            <h4>Average Temperature</h4>
+            <p class="stat-number" id="avgTemp">--</p>
+        </div>
+        <div class="stat-box">
+            <h4>Average Humidity</h4>
+            <p class="stat-number" id="avgHumidity">--</p>
+        </div>
+        <div class="stat-box">
+            <h4>Data Points</h4>
+            <p class="stat-number" id="dataPoints">--</p>
+        </div>
+    </div>
+
+    <!-- Irrigation Logs -->
+    <div class="logs-section">
+        <h2><i class="fas fa-history"></i> Recent Irrigation Events</h2>
+        <div class="logs-table-container">
+            <table class="logs-table" id="irrigationLogs">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Crop</th>
+                        <th>Action</th>
+                        <th>Reason</th>
+                        <th>Moisture</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td colspan="5" class="loading">Loading logs...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let moistureChart, temperatureChart, humidityChart, combinedChart;
+
+async function loadChartData(hours = 24) {
+    try {
+        // Update active button
+        document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
+        
+        const response = await fetch(`/api/chart-data/?hours=${hours}`);
+        const data = await response.json();
+        
+        // Update current values
+        if (data.moisture.length > 0) {
+            const lastIndex = data.moisture.length - 1;
+            document.getElementById('currentMoisture').textContent = data.moisture[lastIndex].toFixed(1) + '%';
+            document.getElementById('currentTemp').textContent = data.temperature[lastIndex].toFixed(1) + '°C';
+            document.getElementById('currentHumidity').textContent = data.humidity[lastIndex].toFixed(1) + '%';
+        }
+        
+        // Calculate averages
+        const avgMoisture = (data.moisture.reduce((a, b) => a + b, 0) / data.moisture.length).toFixed(1);
+        const avgTemp = (data.temperature.reduce((a, b) => a + b, 0) / data.temperature.length).toFixed(1);
+        const avgHumidity = (data.humidity.reduce((a, b) => a + b, 0) / data.humidity.length).toFixed(1);
+        
+        document.getElementById('avgMoisture').textContent = avgMoisture + '%';
+        document.getElementById('avgTemp').textContent = avgTemp + '°C';
+        document.getElementById('avgHumidity').textContent = avgHumidity + '%';
+        document.getElementById('dataPoints').textContent = data.labels.length;
+        
+        // Update charts
+        updateMoistureChart(data);
+        updateTemperatureChart(data);
+        updateHumidityChart(data);
+        updateCombinedChart(data);
+        
+    } catch (error) {
+        console.error('Error loading chart data:', error);
+    }
+}
+
+function updateMoistureChart(data) {
+    const ctx = document.getElementById('moistureChart').getContext('2d');
+    
+    if (moistureChart) {
+        moistureChart.destroy();
+    }
+    
+    moistureChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.labels,
+            datasets: [{
+                label: 'Soil Moisture',
+                data: data.moisture,
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: 'Moisture %'
+                    }
+                }
+            }
+        }
+    });
+}
+
+function updateTemperatureChart(data) {
+    const ctx = document.getElementById('temperatureChart').getContext('2d');
+    
+    if (temperatureChart) {
+        temperatureChart.destroy();
+    }
+    
+    temperatureChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.labels,
+            datasets: [{
+                label: 'Temperature',
+                data: data.temperature,
+                borderColor: '#ef4444',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Temperature °C'
+                    }
+                }
+            }
+        }
+    });
+}
+
+function updateHumidityChart(data) {
+    const ctx = document.getElementById('humidityChart').getContext('2d');
+    
+    if (humidityChart) {
+        humidityChart.destroy();
+    }
+    
+    humidityChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.labels,
+            datasets: [{
+                label: 'Humidity',
+                data: data.humidity,
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: 'Humidity %'
+                    }
+                }
+            }
+        }
+    });
+}
+
+function updateCombinedChart(data) {
+    const ctx = document.getElementById('combinedChart').getContext('2d');
+    
+    if (combinedChart) {
+        combinedChart.destroy();
+    }
+    
+    combinedChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.labels,
+            datasets: [
+                {
+                    label: 'Moisture %',
+                    data: data.moisture,
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    tension: 0.4,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Temperature °C',
+                    data: data.temperature,
+                    borderColor: '#ef4444',
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    tension: 0.4,
+                    yAxisID: 'y1'
+                },
+                {
+                    label: 'Humidity %',
+                    data: data.humidity,
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    tension: 0.4,
+                    yAxisID: 'y'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            scales: {
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Moisture & Humidity %'
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Temperature °C'
+                    },
+                    grid: {
+                        drawOnChartArea: false
+                    }
+                }
+            }
+        }
+    });
+}
+
+async function loadIrrigationLogs() {
+    try {
+        const response = await fetch('/api/irrigation-logs/?page_size=10');
+        const data = await response.json();
+        
+        const tbody = document.querySelector('#irrigationLogs tbody');
+        
+        if (data.results.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5">No irrigation logs yet</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = data.results.map(log => `
+            <tr>
+                <td>${new Date(log.timestamp).toLocaleString()}</td>
+                <td>${log.crop_name || 'N/A'}</td>
+                <td>
+                    <span class="status-badge ${log.relay_state ? 'status-on' : 'status-off'}">
+                        ${log.relay_state ? 'ON' : 'OFF'}
+                    </span>
+                </td>
+                <td>${log.reason}</td>
+                <td>${log.sensor_data}</td>
+            </tr>
+        `).join('');
+        
+    } catch (error) {
+        console.error('Error loading irrigation logs:', error);
+    }
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    loadChartData(24);
+    loadIrrigationLogs();
+    
+    // Refresh data every 30 seconds
+    setInterval(() => {
+        const activeBtn = document.querySelector('.filter-btn.active');
+        if (activeBtn) {
+            const hours = parseInt(activeBtn.textContent);
+            loadChartData(hours);
+        }
+    }, 30000);
+});
+</script>
+{% endblock %}

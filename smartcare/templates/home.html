@@ -1,0 +1,335 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Smart Care{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <!-- Header Section -->
+    <div class="dashboard-header">
+        <h1>Plant Monitoring Dashboard</h1>
+        <p class="subtitle">Real-time IoT monitoring and control system</p>
+    </div>
+
+    <!-- Weather Widget -->
+    <div class="weather-widget" id="weatherWidget">
+        <div class="weather-loading">
+            <i class="fas fa-spinner fa-spin"></i> Loading weather...
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon moisture">
+                <i class="fas fa-tint"></i>
+            </div>
+            <div class="stat-content">
+                <h3 id="moistureValue">--</h3>
+                <p>Soil Moisture</p>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon temperature">
+                <i class="fas fa-thermometer-half"></i>
+            </div>
+            <div class="stat-content">
+                <h3 id="temperatureValue">--</h3>
+                <p>Temperature</p>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon humidity">
+                <i class="fas fa-water"></i>
+            </div>
+            <div class="stat-content">
+                <h3 id="humidityValue">--</h3>
+                <p>Air Humidity</p>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon crops">
+                <i class="fas fa-leaf"></i>
+            </div>
+            <div class="stat-content">
+                <h3>{{ total_crops }}</h3>
+                <p>Total Crops</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Control Panel -->
+    <div class="control-panel">
+        <div class="panel-section">
+            <h2><i class="fas fa-leaf"></i> Active Crop</h2>
+            <div class="crop-selector">
+                <select id="cropSelect" class="form-select">
+                    <option value="">Select a crop...</option>
+                </select>
+                <button onclick="setActiveCrop()" class="btn btn-primary">
+                    <i class="fas fa-check"></i> Set Active
+                </button>
+            </div>
+            
+            {% if active_crop %}
+            <div class="active-crop-info">
+                <h3>{{ active_crop.crop.name }}</h3>
+                <div class="threshold-info">
+                    <div class="threshold-item">
+                        <span>Moisture Range:</span>
+                        <strong>{{ active_crop.crop.moisture_min }}% - {{ active_crop.crop.moisture_max }}%</strong>
+                    </div>
+                    <div class="threshold-item">
+                        <span>Optimal Temperature:</span>
+                        <strong>{{ active_crop.crop.optimal_temp_min }}°C - {{ active_crop.crop.optimal_temp_max }}°C</strong>
+                    </div>
+                    <div class="threshold-item">
+                        <span>Optimal Humidity:</span>
+                        <strong>{{ active_crop.crop.optimal_humidity_min }}% - {{ active_crop.crop.optimal_humidity_max }}%</strong>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="no-crop-message">
+                <i class="fas fa-info-circle"></i>
+                <p>No crop selected. Please select a crop to start monitoring.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="panel-section">
+            <h2><i class="fas fa-power-off"></i> Manual Control</h2>
+            <div class="relay-control">
+                <button onclick="controlRelay('ON')" class="btn btn-success">
+                    <i class="fas fa-toggle-on"></i> Turn ON Irrigation
+                </button>
+                <button onclick="controlRelay('OFF')" class="btn btn-danger">
+                    <i class="fas fa-toggle-off"></i> Turn OFF Irrigation
+                </button>
+            </div>
+            <p class="control-note">
+                <i class="fas fa-exclamation-triangle"></i>
+                Manual control overrides automatic irrigation
+            </p>
+        </div>
+    </div>
+
+    <!-- Recent Readings -->
+    <div class="recent-readings">
+        <h2><i class="fas fa-history"></i> Recent Sensor Readings</h2>
+        <div class="mini-chart">
+            <canvas id="miniChart"></canvas>
+        </div>
+    </div>
+
+    <!-- System Status -->
+    <div class="system-status">
+        <div class="status-item">
+            <i class="fas fa-circle status-online"></i>
+            <span>ESP32 Status: <strong id="esp32Status">Waiting...</strong></span>
+        </div>
+        <div class="status-item">
+            <i class="fas fa-circle status-online"></i>
+            <span>MQTT Broker: <strong>Connected</strong></span>
+        </div>
+        <div class="status-item">
+            <i class="fas fa-database"></i>
+            <span>Total Readings: <strong>{{ total_readings }}</strong></span>
+        </div>
+    </div>
+</div>
+<!-- <script src="https://cdn.botpress.cloud/webchat/v3.3/inject.js" defer></script>
+<script src="https://files.bpcontent.cloud/2025/11/14/18/20251114184354-ILFDHVGE.js" defer></script> -->
+<script>
+(function(){if(!window.chatbase||window.chatbase("getState")!=="initialized"){window.chatbase=(...arguments)=>{if(!window.chatbase.q){window.chatbase.q=[]}window.chatbase.q.push(arguments)};window.chatbase=new Proxy(window.chatbase,{get(target,prop){if(prop==="q"){return target.q}return(...args)=>target(prop,...args)}})}const onLoad=function(){const script=document.createElement("script");script.src="https://www.chatbase.co/embed.min.js";script.id="ksAW7l3bVqvn-Bzq7t346";script.domain="www.chatbase.co";document.body.appendChild(script)};if(document.readyState==="complete"){onLoad()}else{window.addEventListener("load",onLoad)}})();
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Fetch latest sensor data
+async function fetchLatestData() {
+    try {
+        const response = await fetch('/api/latest-sensor/');
+        const data = await response.json();
+        
+        if (data.moisture !== undefined) {
+            document.getElementById('moistureValue').textContent = data.moisture.toFixed(1) + '%';
+            document.getElementById('temperatureValue').textContent = data.temperature.toFixed(1) + '°C';
+            document.getElementById('humidityValue').textContent = data.humidity.toFixed(1) + '%';
+            document.getElementById('esp32Status').textContent = 'Online';
+        }
+    } catch (error) {
+        console.error('Error fetching sensor data:', error);
+        document.getElementById('esp32Status').textContent = 'Offline';
+    }
+}
+
+// Fetch crops list
+async function fetchCrops() {
+    try {
+        const response = await fetch('/api/crops/');
+        const data = await response.json();
+        const select = document.getElementById('cropSelect');
+        
+        data.results.forEach(crop => {
+            const option = document.createElement('option');
+            option.value = crop.id;
+            option.textContent = crop.name;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error fetching crops:', error);
+    }
+}
+
+// Set active crop
+async function setActiveCrop() {
+    const cropId = document.getElementById('cropSelect').value;
+    
+    if (!cropId) {
+        alert('Please select a crop first');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/set-active-crop/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ crop_id: cropId })
+        });
+        
+        const data = await response.json();
+        alert(data.message);
+        location.reload();
+    } catch (error) {
+        console.error('Error setting active crop:', error);
+        alert('Error setting active crop');
+    }
+}
+
+// Control relay
+async function controlRelay(state) {
+    try {
+        const response = await fetch('/api/relay-control/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ state: state })
+        });
+        
+        const data = await response.json();
+        alert(data.message);
+    } catch (error) {
+        console.error('Error controlling relay:', error);
+        alert('Error controlling relay');
+    }
+}
+
+// Fetch weather data
+async function fetchWeather() {
+    try {
+        const response = await fetch('/api/weather/');
+        const data = await response.json();
+        
+        const widget = document.getElementById('weatherWidget');
+        // widget.innerHTML = `
+        //     <div class="weather-content">
+        //         <div class="weather-main">
+        //             <img src="http://openweathermap.org/img/wn/${data.icon}@2x.png" alt="Weather">
+        //             <div class="weather-temp">${data.temp}°C</div>
+        //         </div>
+        //         <div class="weather-details">
+        //             <h3>${data.city}</h3>
+        //             <p>${data.description}</p>
+        //             <div class="weather-extra">
+        //                 <span><i class="fas fa-tint"></i> ${data.humidity}%</span>
+        //                 <span><i class="fas fa-sunrise"></i> ${data.sunrise}</span>
+        //                 <span><i class="fas fa-sunset"></i> ${data.sunset}</span>
+        //             </div>
+        //         </div>
+        //     </div>
+        // `;
+        widget.innerHTML = `
+    <div class="weather-content">
+        <div class="weather-main">
+            <img src="http://openweathermap.org/img/wn/${data.icon}@2x.png" alt="Weather">
+            <div class="weather-temp">${data.temp}°C</div>
+        </div>
+        <div class="weather-details">
+            <h3>${data.city}</h3>
+            <p>${data.description}</p>
+            <div class="weather-extra">
+                <span><i class="fas fa-tint"></i> ${data.humidity}%</span>
+                <span><i class="fas fa-sun"></i> Sunrise: ${data.sunrise}</span>
+                <span><i class="fas fa-moon"></i> Sunset: ${data.sunset}</span>
+            </div>
+        </div>
+    </div>
+`;
+
+    } catch (error) {
+        console.error('Error fetching weather:', error);
+    }
+}
+
+// Initialize mini chart
+async function initMiniChart() {
+    try {
+        const response = await fetch('/api/chart-data/?hours=6');
+        const data = await response.json();
+        
+        const ctx = document.getElementById('miniChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: 'Moisture %',
+                    data: data.moisture,
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error loading mini chart:', error);
+    }
+}
+
+// Initialize dashboard
+document.addEventListener('DOMContentLoaded', function() {
+    fetchLatestData();
+    fetchCrops();
+    fetchWeather();
+    initMiniChart();
+    
+    // Refresh data every 5 seconds
+    setInterval(fetchLatestData, 5000);
+    
+    // Refresh weather every 5 minutes
+    setInterval(fetchWeather, 300000);
+});
+</script>
+{% endblock %}
