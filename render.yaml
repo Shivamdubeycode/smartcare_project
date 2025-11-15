@@ -3,5 +3,6 @@ services:
     name: smartcare
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn smartcare.wsgi
+    python manage.py collectstatic --noinput
+    startCommand: gunicorn project.wsgi
     preDeployCommand: python manage.py migrate
