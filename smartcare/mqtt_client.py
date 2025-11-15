@@ -2,7 +2,7 @@ import paho.mqtt.client as mqtt
 import json
 import logging
 from django.conf import settings
-from .models import SensorData, ActiveCrop, IrrigationLog
+# from .models import SensorData, ActiveCrop, IrrigationLog
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ class MQTTClient:
 
     def on_message(self, client, userdata, msg):
         """Callback when message received from ESP32"""
+        from .models import SensorData  #1
         try:
             # Parse incoming JSON data from ESP32
             payload = json.loads(msg.payload.decode())
@@ -49,6 +50,7 @@ class MQTTClient:
 
     def check_and_control_irrigation(self, sensor_data):
         """Check moisture levels and control relay if needed"""
+        from .models import ActiveCrop, IrrigationLog #2
         try:
             active_crop_obj = ActiveCrop.objects.filter(is_active=True).first()
             
@@ -87,6 +89,7 @@ class MQTTClient:
 
     def publish_relay_command(self, state):
         """Publish relay command to ESP32"""
+        from .models import SensorData #3
         try:
             command = {
                 "relay": "ON" if state else "OFF",
