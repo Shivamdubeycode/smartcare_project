@@ -2,6 +2,11 @@ from pathlib import Path
 import os
 from decouple import config
 
+
+# Optimize TensorFlow for Render
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Reduce TF logging
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # No GPU on Render
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-this-in-production')

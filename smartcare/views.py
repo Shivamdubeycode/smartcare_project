@@ -303,3 +303,5 @@ def get_detection_detail(request, pk):
         return JsonResponse(data)
     except DiseaseDetection.DoesNotExist:
         raise Http404("Detection not found")
+
+
